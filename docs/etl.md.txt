@@ -1,0 +1,166 @@
+# ETL Documentation
+
+## Objective
+
+This document describes how to set up the environment and load raw customer data into a staging schema in PostgreSQL, so we can prepare and analyze it for churn prediction.
+
+---
+
+## 1. Project Setup & Environment
+
+1. **Clone the repository**
+
+   ```bash
+   git clone git@github.com:<username>/churn-prediction-dashboard.git
+   cd churn-prediction-dashboard
+   ```
+
+   - Clones your GitHub repo locally and moves into its directory.
+
+2. **Create and activate a Python virtual environment**
+
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate    # macOS/Linux
+   venv\Scripts\activate     # Windows PowerShell
+   ```
+
+   - Isolates project dependencies.
+
+3. **Install dependencies**
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+   - Installs libraries like pandas, SQLAlchemy, Airflow, etc., from `requirements.txt`.
+
+4. **Project directory structure**
+
+   ```text
+   churn-prediction-dashboard/
+   ├── data/           # raw and processed CSV files
+   │   ├── raw/
+   │   └── processed/
+   ├── src/            # code folders
+   │   ├── etl/        # loading scripts
+   │   ├── features/   # feature engineering scripts
+   │   └── model/      # modeling scripts
+   ├── airflow/        # Airflow DAGs
+   │   └── dags/
+   ├── docs/           # documentation files
+   │   └── etl.md      # this file
+   ├── models/         # saved model artifacts
+   ├── requirements.txt
+   └── README.md       # project overview
+   ```
+
+---
+
+## 2. Stand Up PostgreSQL (Using Docker)
+
+We use Docker to run Postgres in an isolated container.
+
+1. **Pull the Postgres image**
+
+   ```bash
+   docker pull postgres:15
+   ```
+
+   - Downloads the official PostgreSQL 15 image.
+
+2. **Run the container**
+
+   ```bash
+   docker run --name churn-postgres \
+     -e POSTGRES_USER=churn_user \
+     -e POSTGRES_PASSWORD=churn_pass \
+     -e POSTGRES_DB=churn_db \
+     -p 5432:5432 \
+     -d postgres:15
+   ```
+
+   - `--name churn-postgres`: gives the container a name.
+   - `-e ...`: sets environment variables inside the container:
+     - `POSTGRES_USER=churn_user`
+     - `POSTGRES_PASSWORD=churn_pass`
+     - `POSTGRES_DB=churn_db`
+   - `-p 5432:5432`: maps host port 5432 to container port 5432.
+   - `-d`: runs in detached background mode.
+
+3. **Verify the container**
+
+   ```bash
+   docker ps
+   ```
+
+   - Lists running containers; look for `churn-postgres`.
+
+4. **Connect to Postgres**
+
+   ```bash
+   docker exec -it churn-postgres psql -U churn_user -d churn_db
+   ```
+
+   - Opens a Postgres prompt inside the container without prompting for a password.
+
+---
+
+## 3. Staging Schema & Table Creation
+
+Once connected (`churn_db=#`), create the schema and tables:
+
+```sql
+-- 1. Create the staging schema
+CREATE SCHEMA IF NOT EXISTS staging;
+
+-- 2. Subscriptions table
+CREATE TABLE IF NOT EXISTS staging.subscriptions (
+  user_id        VARCHAR PRIMARY KEY,
+  start_date     DATE    NOT NULL,
+  end_date       DATE,
+  plan_type      VARCHAR NOT NULL
+);
+
+-- 3. Usage logs table
+CREATE TABLE IF NOT EXISTS staging.usage_logs (
+  id             SERIAL PRIMARY KEY,
+  user_id        VARCHAR NOT NULL,
+  event_datetime TIMESTAMP NOT NULL,
+  event_type     VARCHAR NOT NULL
+);
+
+-- 4. Support tickets table
+CREATE TABLE IF NOT EXISTS staging.support_tickets (
+  id              SERIAL PRIMARY KEY,
+  user_id         VARCHAR NOT NULL,
+  ticket_date     DATE    NOT NULL,
+  issue_type      VARCHAR NOT NULL,
+  resolution_time INTEGER        -- minutes to resolution
+);
+```
+
+- \`\`: makes a separate namespace for staging.
+- \`\`: defines each table’s columns, types, and primary keys.
+
+To list your new tables:
+
+```sql
+\dt staging.*
+```
+
+---
+
+## Next Steps
+
+- **Load raw CSV data** into these tables using `src/etl/load_staging.py`.
+- **Document** any changes or additions here.
+
+Once you’ve run these commands, commit your work:
+
+```bash
+git add docs/etl.md
+git commit -m "docs: add ETL documentation"
+git push origin main
+```
+
